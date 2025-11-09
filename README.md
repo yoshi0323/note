@@ -99,6 +99,7 @@ cd frontend
 npm install
 npm run build
 ```
+**注意:** `build`コマンドは本番環境用に設定されています（バックエンドURL: `https://note-121s.onrender.com`）。ローカル開発用のビルドは`npm run build:local`を使用してください。
 
 6. Firebase Hostingにデプロイ
 ```bash

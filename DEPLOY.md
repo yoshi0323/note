@@ -186,6 +186,8 @@ npm install
 npm run build
 ```
 
+**注意:** `build`コマンドは本番環境用に設定されています（バックエンドURL: `https://note-121s.onrender.com`）。環境変数は`cross-env`を使用してビルド時に設定されます。
+
 ### 4. Firebase Hostingにデプロイ
 
 プロジェクトルートから実行:
