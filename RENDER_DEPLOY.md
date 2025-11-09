@@ -41,6 +41,7 @@ Renderは完全無料でFastAPIアプリケーションをデプロイできま�
 | **Branch** | `main` |
 | **Root Directory** | `backend` ⚠️ **重要** |
 | **Runtime** | `Python 3` |
+| **Python Version** | `3.11.9`（`runtime.txt`で指定済み、Renderが自動検出） |
 | **Build Command** | `pip install -r requirements.txt && python -m playwright install chromium` |
 | **Start Command** | `uvicorn main:app --host 0.0.0.0 --port $PORT` |
 | **Plan** | `Free` |

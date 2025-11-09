@@ -113,6 +113,7 @@ firebase use note-c801b
    - **Branch**: `main`（デフォルト）
    - **Root Directory**: `backend` ⚠️ **重要**
    - **Runtime**: `Python 3`
+   - **Python Version**: `3.11.9`（`runtime.txt`で指定済み、Renderが自動検出します）
    - **Build Command**: 
      ```
      pip install -r requirements.txt && python -m playwright install chromium
