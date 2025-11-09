@@ -21,6 +21,9 @@ function Navbar({ onLogout }) {
         <Link to="/manual-editor" className={location.pathname === '/manual-editor' ? 'active' : ''}>
           手動編集
         </Link>
+        <Link to="/custom-generator" className={location.pathname === '/custom-generator' ? 'active' : ''}>
+          カスタム生成
+        </Link>
         <Link to="/prompt-settings" className={location.pathname === '/prompt-settings' ? 'active' : ''}>
           プロンプト設定
         </Link>

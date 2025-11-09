@@ -46,6 +46,46 @@ class ThemeAgent:
         else:
             raise ValueError(f"プロバイダー {provider} が利用できません")
     
+    def generate_article_from_custom_prompt(
+        self,
+        custom_prompt: str,
+        provider: str = "openai"
+    ) -> Dict[str, str]:
+        """
+        カスタムプロンプトから記事を生成
+        
+        Args:
+            custom_prompt: ユーザーが入力したカスタムプロンプト
+            provider: LLMプロバイダー ("openai" or "gemini")
+        
+        Returns:
+            生成された記事のタイトルと本文
+        """
+        # カスタムプロンプトにnote向けの基本指示を追加
+        enhanced_prompt = f"""以下のプロンプトに基づいてnote向けの記事を作成してください。
+
+{custom_prompt}
+
+重要な注意事項：
+- Markdown記号（#、##、###、**など）は一切使用しないでください
+- 見出しも通常の文章として自然に書いてください
+- 絵文字を適切に使用して、読みやすく親しみやすい文章にしてください
+- タイトルには絵文字を含めないでください
+- 本文には適度に絵文字を使用してください（段落の区切りや強調など）
+
+記事は以下の形式で出力してください：
+1. タイトル（1行、Markdown記号なし、絵文字なし）
+2. 本文（読みやすく構成された記事、Markdown記号なし、適度に絵文字を使用）
+
+タイトルと本文を明確に分けて出力してください。"""
+        
+        if provider == "openai" and self.openai_api_key:
+            return self._generate_with_openai(enhanced_prompt)
+        elif provider == "gemini" and self.gemini_api_key:
+            return self._generate_with_gemini(enhanced_prompt)
+        else:
+            raise ValueError(f"プロバイダー {provider} が利用できません")
+    
     def _build_prompt(self, theme: str, tone: str, length: str, other_conditions: str) -> str:
         """プロンプトを構築"""
         tone_map = {

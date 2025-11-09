@@ -6,6 +6,7 @@ import Settings from './pages/Settings';
 import ThemeGenerator from './pages/ThemeGenerator';
 import TrendGenerator from './pages/TrendGenerator';
 import ManualEditor from './pages/ManualEditor';
+import CustomGenerator from './pages/CustomGenerator';
 import PromptSettings from './pages/PromptSettings';
 import './App.css';
 
@@ -65,6 +66,10 @@ function App() {
             <Route 
               path="/manual-editor" 
               element={<ManualEditor />} 
+            />
+            <Route 
+              path="/custom-generator" 
+              element={<CustomGenerator onLogout={handleLogout} />} 
             />
             <Route 
               path="/prompt-settings" 
