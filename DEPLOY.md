@@ -39,10 +39,26 @@ firebase use note-c801b
 
 バックエンドを本番環境にデプロイし、URLを取得してください。
 
-**推奨デプロイ先:**
-- **Railway** (https://railway.app/) - 無料プランあり、簡単にデプロイ可能
-- **Render** (https://render.com/) - 無料プランあり
-- **Heroku** (https://www.heroku.com/) - 有料プランのみ（2022年11月以降）
+**推奨デプロイ先（完全無料）:**
+
+1. **Render** (https://render.com/) - **推奨**
+   - 完全無料プランあり
+   - 15分間アクセスがないとスリープしますが、次回アクセス時に自動的に再起動します
+   - 再起動に30秒〜1分程度かかります
+   - GitHub連携で簡単にデプロイ可能
+
+2. **Fly.io** (https://fly.io/)
+   - 完全無料プランあり（月間160時間まで）
+   - スリープしない
+   - より高度な設定が必要
+
+3. **Replit** (https://replit.com/)
+   - 完全無料プランあり
+   - ブラウザベースの開発環境
+
+**有料または期間限定無料:**
+- **Railway** - 30日間のみ無料、その後有料
+- **Heroku** - 有料プランのみ（2022年11月以降）
 
 **Railwayでのデプロイ手順:**
 
@@ -74,29 +90,67 @@ firebase use note-c801b
    - または、カスタムドメインを設定可能
    - 取得したURLをメモ（例: `https://your-app.railway.app`）
 
-**Renderでのデプロイ手順:**
+**Renderでのデプロイ手順（完全無料・推奨）:**
 
-1. Renderにアカウント作成・ログイン（GitHubアカウントでログイン可能）
-   - https://render.com/
+1. **Renderにアカウント作成・ログイン**
+   - https://render.com/ にアクセス
+   - 「Get Started for Free」をクリック
+   - GitHubアカウントでログイン（推奨）
 
-2. 新しいWebサービスを作成
-   - 「New +」→「Web Service」を選択
-   - GitHubリポジトリを接続
+2. **新しいWebサービスを作成**
+   - ダッシュボードで「New +」をクリック
+   - 「Web Service」を選択
 
-3. サービス設定
+3. **GitHubリポジトリを接続**
+   - 「Connect account」をクリック（初回のみ）
+   - GitHubアカウントを認証
+   - リポジトリ `yoshi0323/note` を選択
+   - 「Connect」をクリック
+
+4. **サービス設定を入力**
    - **Name**: 任意の名前（例: `note-backend`）
-   - **Root Directory**: `backend`
-   - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt && python -m playwright install chromium`
-   - **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+   - **Region**: 最寄りのリージョンを選択（例: `Singapore`）
+   - **Branch**: `main`（デフォルト）
+   - **Root Directory**: `backend` ⚠️ **重要**
+   - **Runtime**: `Python 3`
+   - **Build Command**: 
+     ```
+     pip install -r requirements.txt && python -m playwright install chromium
+     ```
+   - **Start Command**: 
+     ```
+     uvicorn main:app --host 0.0.0.0 --port $PORT
+     ```
+   - **Plan**: `Free` を選択
 
-4. 環境変数を設定（オプション）
-   - 「Environment」セクションで追加:
-     - `CORS_ORIGINS`: `https://note-c801b.web.app,https://note-c801b.firebaseapp.com`
+5. **環境変数を設定（オプション）**
+   - 「Advanced」セクションを展開
+   - 「Add Environment Variable」をクリック
+   - 必要に応じて追加:
+     - **Key**: `CORS_ORIGINS`
+     - **Value**: `https://note-c801b.web.app,https://note-c801b.firebaseapp.com`
+   - **注意**: デフォルトで本番フロントエンドURLは既に許可されているため、通常は不要です
 
-5. デプロイ
+6. **デプロイ開始**
    - 「Create Web Service」をクリック
-   - デプロイ完了後、URLを取得（例: `https://your-app.onrender.com`）
+   - デプロイが開始されます（5〜10分程度かかります）
+   - 「Logs」タブでデプロイの進行状況を確認できます
+
+7. **URLの取得**
+   - デプロイが完了すると、自動的にURLが生成されます
+   - 例: `https://note-backend.onrender.com`
+   - このURLをメモしておきます
+
+8. **動作確認**
+   - 生成されたURLにアクセスして、`/docs`にアクセス
+   - 例: `https://note-backend.onrender.com/docs`
+   - FastAPIのドキュメントページが表示されれば成功です
+
+**Renderの無料プランの注意事項:**
+- 15分間アクセスがないと自動的にスリープします
+- 次回アクセス時に自動的に再起動します（30秒〜1分程度かかります）
+- これは無料プランの制限です
+- スリープを防ぐには、定期的にアクセスするか、有料プランにアップグレードする必要があります
 
 **注意事項:**
 - バックエンドのCORS設定は既に本番フロントエンドURL（`https://note-c801b.web.app`、`https://note-c801b.firebaseapp.com`）を含んでいます
