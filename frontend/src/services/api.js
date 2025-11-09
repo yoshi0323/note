@@ -1,6 +1,12 @@
 import axios from 'axios';
 
+// 環境変数の確認（デバッグ用）
+console.log('API_BASE_URL:', process.env.REACT_APP_API_URL);
+console.log('NODE_ENV:', process.env.NODE_ENV);
+
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+console.log('Using API_BASE_URL:', API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,

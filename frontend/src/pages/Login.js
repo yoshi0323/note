@@ -36,7 +36,7 @@ function Login({ onLogin }) {
               id="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="note123"
+              placeholder="パスワードを入力"
               required
             />
           </div>
