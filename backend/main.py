@@ -216,9 +216,19 @@ async def generate_theme_article(
         settings = data["settings"]
         prompt_settings = data["prompt_settings"]
         
+        # APIキーの取得と検証
+        openai_api_key = settings.get("openai_api_key", "").strip() if llm_provider == "openai" else None
+        gemini_api_key = settings.get("gemini_api_key", "").strip() if llm_provider == "gemini" else None
+        
+        if llm_provider == "openai" and (not openai_api_key or openai_api_key == ""):
+            raise HTTPException(status_code=400, detail="OpenAI APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
+        if llm_provider == "gemini" and (not gemini_api_key or gemini_api_key == ""):
+            raise HTTPException(status_code=400, detail="Gemini APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
         agent = ThemeAgent(
-            openai_api_key=settings.get("openai_api_key") if llm_provider == "openai" else None,
-            gemini_api_key=settings.get("gemini_api_key") if llm_provider == "gemini" else None
+            openai_api_key=openai_api_key,
+            gemini_api_key=gemini_api_key
         )
         
         result = agent.generate_article(
@@ -240,8 +250,11 @@ async def generate_theme_article(
         add_user_article(session_id, article)
         
         return {"success": True, "article": article}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[エラー] テーマ記事生成: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"記事生成に失敗しました: {str(e)}")
 
 @app.post("/api/articles/generate/trend")
 async def generate_trend_article(
@@ -257,9 +270,19 @@ async def generate_trend_article(
         settings = data["settings"]
         prompt_settings = data["prompt_settings"]
         
+        # APIキーの取得と検証
+        openai_api_key = settings.get("openai_api_key", "").strip() if llm_provider == "openai" else None
+        gemini_api_key = settings.get("gemini_api_key", "").strip() if llm_provider == "gemini" else None
+        
+        if llm_provider == "openai" and (not openai_api_key or openai_api_key == ""):
+            raise HTTPException(status_code=400, detail="OpenAI APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
+        if llm_provider == "gemini" and (not gemini_api_key or gemini_api_key == ""):
+            raise HTTPException(status_code=400, detail="Gemini APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
         agent = TrendAgent(
-            openai_api_key=settings.get("openai_api_key") if llm_provider == "openai" else None,
-            gemini_api_key=settings.get("gemini_api_key") if llm_provider == "gemini" else None
+            openai_api_key=openai_api_key,
+            gemini_api_key=gemini_api_key
         )
         await agent.initialize()
         
