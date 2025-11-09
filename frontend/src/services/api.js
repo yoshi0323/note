@@ -103,25 +103,24 @@ export const getThemes = async () => {
 };
 
 // 記事生成
-export const generateThemeArticle = async (theme, llmProvider, articleType = 'free') => {
+export const generateThemeArticle = async (theme, llmProvider) => {
   const response = await api.post('/api/articles/generate/theme', null, {
-    params: { theme, llm_provider: llmProvider, article_type: articleType },
+    params: { theme, llm_provider: llmProvider },
   });
   return response.data;
 };
 
-export const generateTrendArticle = async (theme, trendKeyword, llmProvider, articleType = 'free') => {
+export const generateTrendArticle = async (theme, trendKeyword, llmProvider) => {
   const response = await api.post('/api/articles/generate/trend', null, {
-    params: { theme, trend_keyword: trendKeyword, llm_provider: llmProvider, article_type: articleType },
+    params: { theme, trend_keyword: trendKeyword, llm_provider: llmProvider },
   });
   return response.data;
 };
 
-export const generateCustomArticle = async (customPrompt, llmProvider, articleType = 'free') => {
+export const generateCustomArticle = async (customPrompt, llmProvider) => {
   const response = await api.post('/api/articles/generate/custom', {
     custom_prompt: customPrompt,
-    llm_provider: llmProvider,
-    article_type: articleType
+    llm_provider: llmProvider
   });
   return response.data;
 };

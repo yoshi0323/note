@@ -6,7 +6,6 @@ import './CustomGenerator.css';
 function CustomGenerator({ onLogout }) {
   const [customPrompt, setCustomPrompt] = useState('');
   const [llmProvider, setLlmProvider] = useState('openai');
-  const [articleType, setArticleType] = useState('free'); // 'free' or 'paid'
   const [article, setArticle] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -23,7 +22,7 @@ function CustomGenerator({ onLogout }) {
     setArticle(null);
 
     try {
-      const result = await generateCustomArticle(customPrompt, llmProvider, articleType);
+      const result = await generateCustomArticle(customPrompt, llmProvider);
       if (result.success) {
         setArticle(result.article);
       }
@@ -87,31 +86,6 @@ function CustomGenerator({ onLogout }) {
               <option value="openai">OpenAI</option>
               <option value="gemini">Gemini</option>
             </select>
-          </div>
-          <div className="form-group">
-            <label>記事タイプ</label>
-            <div style={{ display: 'flex', gap: '10px', marginTop: '5px' }}>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  value="free"
-                  checked={articleType === 'free'}
-                  onChange={(e) => setArticleType(e.target.value)}
-                  style={{ marginRight: '5px' }}
-                />
-                無料
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  value="paid"
-                  checked={articleType === 'paid'}
-                  onChange={(e) => setArticleType(e.target.value)}
-                  style={{ marginRight: '5px' }}
-                />
-                有料
-              </label>
-            </div>
           </div>
           {error && <div className="error">{error}</div>}
           <button

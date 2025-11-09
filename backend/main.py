@@ -125,7 +125,6 @@ class ArticleRequest(BaseModel):
 class CustomPromptRequest(BaseModel):
     custom_prompt: str
     llm_provider: str = "openai"
-    article_type: str = "free"  # "free" or "paid"
 
 class AutoPostRequest(BaseModel):
     article_id: str
@@ -221,7 +220,6 @@ def get_themes():
 async def generate_theme_article(
     theme: str = Query(...), 
     llm_provider: str = Query("openai"),
-    article_type: str = Query("free"),  # "free" or "paid"
     x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
     """テーマ別記事生成（セッション別）"""
@@ -246,19 +244,12 @@ async def generate_theme_article(
             gemini_api_key=gemini_api_key
         )
         
-        # 有料/無料の条件を追加
-        other_conditions = prompt_settings.get("other_conditions", "")
-        if article_type == "paid":
-            other_conditions += "\n- この記事は有料記事として作成してください。読者に価値を提供する充実した内容にしてください。"
-        else:
-            other_conditions += "\n- この記事は無料記事として作成してください。"
-        
         result = agent.generate_article(
             theme=theme,
             provider=llm_provider,
             tone=prompt_settings.get("tone", "明るい"),
             length=prompt_settings.get("length", "2000-3000"),
-            other_conditions=other_conditions
+            other_conditions=prompt_settings.get("other_conditions", "")
         )
         
         # 記事を保存
@@ -267,8 +258,7 @@ async def generate_theme_article(
             "id": len(articles) + 1,
             "title": result["title"],
             "content": result["content"],
-            "theme": theme,
-            "article_type": article_type
+            "theme": theme
         }
         add_user_article(session_id, article)
         
@@ -284,7 +274,6 @@ async def generate_trend_article(
     theme: str = Query(...), 
     trend_keyword: str = Query(...), 
     llm_provider: str = Query("openai"),
-    article_type: str = Query("free"),  # "free" or "paid"
     x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
     """Xトレンド記事生成（セッション別）"""
@@ -310,20 +299,13 @@ async def generate_trend_article(
         )
         await agent.initialize()
         
-        # 有料/無料の条件を追加
-        other_conditions = prompt_settings.get("other_conditions", "")
-        if article_type == "paid":
-            other_conditions += "\n- この記事は有料記事として作成してください。読者に価値を提供する充実した内容にしてください。"
-        else:
-            other_conditions += "\n- この記事は無料記事として作成してください。"
-        
         result = await agent.generate_article_from_trend(
             trend_keyword=trend_keyword,
             theme=theme,
             provider=llm_provider,
             tone=prompt_settings.get("tone", "明るい"),
             length=prompt_settings.get("length", "2000-3000"),
-            other_conditions=other_conditions
+            other_conditions=prompt_settings.get("other_conditions", "")
         )
         
         # 記事を保存
@@ -333,8 +315,7 @@ async def generate_trend_article(
             "title": result["title"],
             "content": result["content"],
             "theme": theme,
-            "trend_keyword": trend_keyword,
-            "article_type": article_type
+            "trend_keyword": trend_keyword
         }
         add_user_article(session_id, article)
         
@@ -371,15 +352,8 @@ async def generate_custom_article(
             gemini_api_key=gemini_api_key
         )
         
-        # 有料/無料の条件をプロンプトに追加
-        custom_prompt = request.custom_prompt
-        if request.article_type == "paid":
-            custom_prompt += "\n\nこの記事は有料記事として作成してください。読者に価値を提供する充実した内容にしてください。"
-        else:
-            custom_prompt += "\n\nこの記事は無料記事として作成してください。"
-        
         result = agent.generate_article_from_custom_prompt(
-            custom_prompt=custom_prompt,
+            custom_prompt=request.custom_prompt,
             provider=request.llm_provider
         )
         
@@ -389,8 +363,7 @@ async def generate_custom_article(
             "id": len(articles) + 1,
             "title": result["title"],
             "content": result["content"],
-            "theme": "カスタム",
-            "article_type": request.article_type
+            "theme": "カスタム"
         }
         add_user_article(session_id, article)
         
