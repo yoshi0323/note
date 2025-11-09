@@ -307,8 +307,11 @@ async def generate_trend_article(
         add_user_article(session_id, article)
         
         return {"success": True, "article": article}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[エラー] トレンド記事生成: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"記事生成に失敗しました: {str(e)}")
 
 @app.post("/api/articles/generate/manual")
 async def generate_manual_article(
@@ -635,9 +638,20 @@ async def generate_x_post(
         
         data = get_user_data(session_id)
         settings = data["settings"]
+        
+        # APIキーの取得と検証
+        openai_api_key = settings.get("openai_api_key", "").strip() if llm_provider == "openai" else None
+        gemini_api_key = settings.get("gemini_api_key", "").strip() if llm_provider == "gemini" else None
+        
+        if llm_provider == "openai" and (not openai_api_key or openai_api_key == ""):
+            raise HTTPException(status_code=400, detail="OpenAI APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
+        if llm_provider == "gemini" and (not gemini_api_key or gemini_api_key == ""):
+            raise HTTPException(status_code=400, detail="Gemini APIキーが設定されていません。設定画面でAPIキーを入力してください。")
+        
         agent = XPostAgent(
-            openai_api_key=settings.get("openai_api_key") if llm_provider == "openai" else None,
-            gemini_api_key=settings.get("gemini_api_key") if llm_provider == "gemini" else None
+            openai_api_key=openai_api_key,
+            gemini_api_key=gemini_api_key
         )
         
         result = agent.generate_x_post(
@@ -647,8 +661,11 @@ async def generate_x_post(
         )
         
         return {"success": True, "x_post": result}
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"[エラー] X投稿生成: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"X投稿生成に失敗しました: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
