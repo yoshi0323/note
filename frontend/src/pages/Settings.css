@@ -1,0 +1,17 @@
+.info-box {
+  background-color: #e3f2fd;
+  border-left: 4px solid #2196f3;
+  padding: 15px;
+  margin-bottom: 20px;
+  border-radius: 4px;
+}
+
+.info-box p {
+  margin-bottom: 10px;
+  color: #1976d2;
+}
+
+.info-box p:last-child {
+  margin-bottom: 0;
+}
+
