@@ -914,8 +914,6 @@ class NoteService:
                             except Exception as e:
                                 print(f"[下書き投稿] textarea/contenteditable入力時にエラー: {str(e)}")
                                 continue
-                    if content_filled:
-                        break
                 
                 if not content_filled:
                     raise Exception("本文入力欄が見つかりませんでした")
