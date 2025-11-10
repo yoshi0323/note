@@ -947,14 +947,24 @@ class NoteService:
                     raise Exception(f"下書き保存に失敗しました: {error_message}")
                 
         except Exception as e:
+            import traceback
             error_msg = str(e)
-            print(f"下書き投稿エラー: {error_msg}")
+            error_traceback = traceback.format_exc()
+            print(f"[下書き投稿エラー] {error_msg}")
+            print(f"[下書き投稿エラー詳細]\n{error_traceback}")
             try:
                 if self.page:
+                    screenshot_path = f'error_screenshot_{int(time.time())}.png'
                     if USE_SYNC:
-                        self.page.screenshot(path=f'error_screenshot_{int(time.time())}.png')
+                        self.page.screenshot(path=screenshot_path)
                     else:
-                        await self.page.screenshot(path=f'error_screenshot_{int(time.time())}.png')
+                        await self.page.screenshot(path=screenshot_path)
+                    print(f"[下書き投稿エラー] スクリーンショットを保存: {screenshot_path}")
+            except Exception as screenshot_error:
+                print(f"[下書き投稿エラー] スクリーンショット保存失敗: {str(screenshot_error)}")
+            # ブラウザを閉じる
+            try:
+                await self._close_browser()
             except:
                 pass
             raise Exception(f"下書き投稿エラー: {error_msg}")
