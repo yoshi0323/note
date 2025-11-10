@@ -127,8 +127,17 @@ class NoteService:
         try:
             # 本番環境（Renderなど）ではヘッドレスモードを使用
             import os
-            is_production = bool(os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME"))
-            headless_mode = True if is_production else False
+            render_env = os.getenv("RENDER")
+            railway_env = os.getenv("RAILWAY")
+            fly_env = os.getenv("FLY_APP_NAME")
+            headless_env = os.getenv("HEADLESS_MODE")
+
+            if headless_env is not None:
+                headless_mode = headless_env.strip().lower() in ("1", "true", "yes", "on")
+            else:
+                headless_mode = any(flag is not None for flag in [render_env, railway_env, fly_env])
+
+            print(f"[ログイン] headless_mode={headless_mode} (type={type(headless_mode)})")
             await self._init_browser(headless=headless_mode)
             
             if USE_SYNC:
