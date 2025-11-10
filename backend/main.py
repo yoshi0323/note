@@ -68,10 +68,6 @@ async def ensure_playwright_browsers():
 
         install_cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
 
-        # Renderなどの環境では依存関係のインストールも必要になる場合がある
-        if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME"):
-            install_cmd.append("--with-deps")
-
         print(f"[Playwright] Chromiumをインストールします: {' '.join(install_cmd)}")
         try:
             process = await asyncio.create_subprocess_exec(
