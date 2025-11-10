@@ -782,6 +782,16 @@ class NoteService:
                 await self.page.screenshot(path='editor_page.png')
                 print("[下書き投稿] エディタページのスクリーンショットを保存しました: editor_page.png")
                 
+                # エディタがiframe内に読み込まれている場合に対応
+                editor_contexts = [self.page]
+                try:
+                    editor_frames = [frame for frame in self.page.frames if "editor" in frame.url or "notes/new" in frame.url]
+                    if editor_frames:
+                        editor_contexts = editor_frames + editor_contexts
+                        print(f"[下書き投稿] エディタiframeを検出しました: {[frame.url for frame in editor_frames]}")
+                except Exception as e:
+                    print(f"[下書き投稿] iframe検出中にエラー: {str(e)}")
+                
                 print("[下書き投稿] タイトルを入力します...")
                 title_filled = False
                 title_selectors = [
@@ -799,27 +809,38 @@ class NoteService:
                     'input'
                 ]
                 
-                for selector in title_selectors:
-                    try:
-                        title_element = self.page.locator(selector).first
-                        count = await title_element.count()
-                        if count > 0:
-                            await title_element.click()
-                            await asyncio.sleep(0.5)
-                            await title_element.fill(title)
-                            print(f"[下書き投稿] タイトルを入力しました (セレクター: {selector})")
-                            title_filled = True
-                            break
-                    except Exception as e:
-                        print(f"[下書き投稿] タイトルセレクター {selector} でエラー: {str(e)}")
-                        continue
+                for context in editor_contexts:
+                    for selector in title_selectors:
+                        try:
+                            title_element = context.locator(selector).first
+                            count = await title_element.count()
+                            if count > 0:
+                                await title_element.click()
+                                await asyncio.sleep(0.5)
+                                await title_element.fill(title)
+                                print(f"[下書き投稿] タイトルを入力しました (コンテキスト: {getattr(context, 'url', 'page')}, セレクター: {selector})")
+                                title_filled = True
+                                break
+                        except Exception as e:
+                            print(f"[下書き投稿] タイトルセレクター {selector} でエラー: {str(e)}")
+                            continue
+                    if title_filled:
+                        break
                 
                 if not title_filled:
-                    all_inputs = await self.page.locator('input').all()
-                    if len(all_inputs) > 0:
-                        await all_inputs[0].fill(title)
-                        title_filled = True
-                        print("[下書き投稿] 最初のinput要素にタイトルを入力しました")
+                    for context in editor_contexts:
+                        all_inputs = await context.locator('input').all()
+                        if len(all_inputs) > 0:
+                            try:
+                                await all_inputs[0].click()
+                                await asyncio.sleep(0.5)
+                                await all_inputs[0].fill(title)
+                                title_filled = True
+                                print("[下書き投稿] 最初のinput要素にタイトルを入力しました")
+                                break
+                            except Exception as e:
+                                print(f"[下書き投稿] input要素への入力でエラー: {str(e)}")
+                                continue
                 
                 if not title_filled:
                     raise Exception("タイトル入力欄が見つかりませんでした")
@@ -840,41 +861,61 @@ class NoteService:
                     '[class*="editor"] textarea',
                     '[class*="Editor"] textarea',
                     '[class*="editor"] [contenteditable]',
-                    '[class*="Editor"] [contenteditable]'
+                    '[class*="Editor"] [contenteditable]',
+                    'div[role="textbox"]',
+                    'div[aria-label*="本文"]',
+                    'div[data-placeholder*="本文"]',
+                    'div[data-placeholder*="content"]',
+                    'section div[contenteditable="true"]'
                 ]
                 
-                for selector in content_selectors:
-                    try:
-                        content_element = self.page.locator(selector).first
-                        count = await content_element.count()
-                        if count > 0:
-                            await content_element.click()
-                            await asyncio.sleep(0.5)
-                            
-                            is_contenteditable = await content_element.get_attribute('contenteditable')
-                            if is_contenteditable:
-                                await content_element.evaluate(f'element => element.innerHTML = `{content.replace(chr(10), "<br>")}`')
-                            else:
-                                await content_element.fill(content)
-                            
-                            print(f"[下書き投稿] 本文を入力しました (セレクター: {selector})")
-                            content_filled = True
-                            break
-                    except Exception as e:
-                        print(f"[下書き投稿] 本文セレクター {selector} でエラー: {str(e)}")
-                        continue
+                for context in editor_contexts:
+                    for selector in content_selectors:
+                        try:
+                            content_element = context.locator(selector).first
+                            count = await content_element.count()
+                            if count > 0:
+                                await content_element.click()
+                                await asyncio.sleep(0.5)
+                                
+                                is_contenteditable = await content_element.get_attribute('contenteditable')
+                                role_attr = await content_element.get_attribute('role')
+                                if is_contenteditable or (role_attr and role_attr.lower() == 'textbox'):
+                                    await content_element.evaluate(f'element => element.innerHTML = `{content.replace(chr(10), "<br>")}`')
+                                else:
+                                    await content_element.fill(content)
+                                
+                                print(f"[下書き投稿] 本文を入力しました (コンテキスト: {getattr(context, 'url', 'page')}, セレクター: {selector})")
+                                content_filled = True
+                                break
+                        except Exception as e:
+                            print(f"[下書き投稿] 本文セレクター {selector} でエラー: {str(e)}")
+                            continue
+                    if content_filled:
+                        break
                 
                 if not content_filled:
-                    all_textareas = await self.page.locator('textarea, [contenteditable="true"]').all()
-                    if len(all_textareas) > 0:
-                        element = all_textareas[0]
-                        is_contenteditable = await element.get_attribute('contenteditable')
-                        if is_contenteditable:
-                            await element.evaluate(f'element => element.innerHTML = `{content.replace(chr(10), "<br>")}`')
-                        else:
-                            await element.fill(content)
-                        content_filled = True
-                        print("[下書き投稿] 最初のtextarea/contenteditable要素に本文を入力しました")
+                    for context in editor_contexts:
+                        all_textareas = await context.locator('textarea, [contenteditable="true"], div[role="textbox"]').all()
+                        if len(all_textareas) > 0:
+                            try:
+                                element = all_textareas[0]
+                                await element.click()
+                                await asyncio.sleep(0.5)
+                                is_contenteditable = await element.get_attribute('contenteditable')
+                                role_attr = await element.get_attribute('role')
+                                if is_contenteditable or (role_attr and role_attr.lower() == 'textbox'):
+                                    await element.evaluate(f'element => element.innerHTML = `{content.replace(chr(10), "<br>")}`')
+                                else:
+                                    await element.fill(content)
+                                content_filled = True
+                                print("[下書き投稿] 最初のtextarea/contenteditable要素に本文を入力しました")
+                                break
+                            except Exception as e:
+                                print(f"[下書き投稿] textarea/contenteditable入力時にエラー: {str(e)}")
+                                continue
+                    if content_filled:
+                        break
                 
                 if not content_filled:
                     raise Exception("本文入力欄が見つかりませんでした")
