@@ -19,7 +19,7 @@ function TrendGenerator({ onLogout }) {
 
   useEffect(() => {
     loadThemes();
-    loadTrends();
+    loadTrends(); // バックグラウンドで自動取得されるので、初期ロード時にも取得
   }, []);
 
   const loadThemes = async () => {
@@ -31,13 +31,15 @@ function TrendGenerator({ onLogout }) {
     }
   };
 
-  const loadTrends = async () => {
+  const loadTrends = async (forceRefresh = false) => {
     setLoadingTrends(true);
     try {
-      const data = await getTrends(10);
+      // 更新ボタンが押された場合はキャッシュを無視して強制更新
+      const data = await getTrends(50, !forceRefresh);
       setTrends(data.trends || []);
     } catch (err) {
       console.error('トレンドの取得に失敗しました:', err);
+      setError('トレンドの取得に失敗しました: ' + (err.response?.data?.detail || err.message));
     } finally {
       setLoadingTrends(false);
     }
@@ -46,11 +48,8 @@ function TrendGenerator({ onLogout }) {
   const loadSchedules = async () => {
     try {
       const data = await getSchedules();
-      // このテーマとトレンドに関連するスケジュールのみをフィルタリング
-      const relatedSchedules = (data.schedules || []).filter(
-        s => s.theme === selectedTheme && s.trend_keyword === selectedTrend && !s.article_id
-      );
-      setSchedules(relatedSchedules);
+      // すべてのスケジュールを表示（フィルタリングなし）
+      setSchedules(data.schedules || []);
     } catch (err) {
       console.error('スケジュールの取得に失敗しました:', err);
     }
@@ -137,11 +136,10 @@ function TrendGenerator({ onLogout }) {
   };
 
   useEffect(() => {
-    if (selectedTheme && selectedTrend) {
-      loadSchedules();
-    }
+    // テーマ・トレンド選択に関係なく、常に全スケジュールを読み込む
+    loadSchedules();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTheme, selectedTrend]);
+  }, []);
 
   return (
     <div className="App">
@@ -154,6 +152,12 @@ function TrendGenerator({ onLogout }) {
             {loadingTrends ? (
               <p>トレンドを取得中...</p>
             ) : (
+              <>
+                {trends.length === 0 && (
+                  <p className="hint">
+                    「トレンドを更新」ボタンを押すと、ブラウザが起動してログイン後に最新トレンドを取得します。
+                  </p>
+                )}
               <select
                 id="trend"
                 value={selectedTrend}
@@ -162,18 +166,20 @@ function TrendGenerator({ onLogout }) {
                 <option value="">トレンドを選択してください</option>
                 {trends.map((trend, index) => (
                   <option key={index} value={trend.keyword}>
-                    {trend.keyword} ({trend.tweet_count?.toLocaleString()}ツイート)
+                    {trend.keyword}{trend.tweet_count ? ` (${trend.tweet_count.toLocaleString()}ツイート)` : ''}
                   </option>
                 ))}
               </select>
+              </>
             )}
             <button
               type="button"
-              onClick={loadTrends}
+              onClick={() => loadTrends(true)}
               className="btn btn-secondary"
               style={{ marginTop: '10px' }}
+              disabled={loadingTrends}
             >
-              トレンドを更新
+              {loadingTrends ? '更新中...' : 'トレンドを更新'}
             </button>
           </div>
           <div className="form-group">
@@ -238,16 +244,14 @@ function TrendGenerator({ onLogout }) {
             </div>
           )}
           
-          {selectedTheme && selectedTrend && (
-            <ScheduleManager
-              schedules={schedules}
-              onAddSchedule={handleAddSchedule}
-              onDeleteSchedule={handleDeleteSchedule}
-              theme={selectedTheme}
-              trendKeyword={selectedTrend}
-              llmProvider={llmProvider}
-            />
-          )}
+          <ScheduleManager
+            schedules={schedules}
+            onAddSchedule={handleAddSchedule}
+            onDeleteSchedule={handleDeleteSchedule}
+            theme={selectedTheme}
+            trendKeyword={selectedTrend}
+            llmProvider={llmProvider}
+          />
         </div>
       </div>
     </div>

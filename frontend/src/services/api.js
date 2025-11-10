@@ -44,10 +44,23 @@ api.interceptors.request.use(
   }
 );
 
-// レスポンスインターセプター: 401エラーの処理
+// レスポンスインターセプター: エラーの処理
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // ネットワークエラーの詳細をログに記録
+    if (error.code === 'ERR_NETWORK' || error.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+      console.error('ネットワークエラー:', {
+        message: error.message,
+        code: error.code,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL,
+        }
+      });
+    }
+    
     if (error.response?.status === 401) {
       console.error('認証エラー:', error.response.data);
       // セッション切れの場合はログアウト
@@ -157,8 +170,8 @@ export const generateXPost = async (articleId, llmProvider = 'openai') => {
 };
 
 // トレンド取得
-export const getTrends = async (limit = 10) => {
-  const response = await api.get('/api/trends', { params: { limit } });
+export const getTrends = async (limit = 50, useCache = true) => {
+  const response = await api.get('/api/trends', { params: { limit, use_cache: useCache } });
   return response.data;
 };
 

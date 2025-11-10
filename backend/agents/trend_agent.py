@@ -3,50 +3,74 @@ Xトレンド記事生成エージェント
 """
 from typing import Dict, Optional, List
 import asyncio
-from twscrape import API, gather
 from agents.theme_agent import ThemeAgent
+from services.trend_scraper import TrendScraper
+
+# グローバルなTrendScraperインスタンスを使用（バックグラウンド更新を共有）
+_global_trend_scraper = None
+
+def get_global_trend_scraper() -> TrendScraper:
+    """グローバルなTrendScraperインスタンスを取得"""
+    global _global_trend_scraper
+    if _global_trend_scraper is None:
+        _global_trend_scraper = TrendScraper()
+    return _global_trend_scraper
 
 class TrendAgent:
     def __init__(self, openai_api_key: Optional[str] = None, gemini_api_key: Optional[str] = None):
         self.theme_agent = ThemeAgent(openai_api_key, gemini_api_key)
-        self.api = None
+        # グローバルインスタンスを使用（バックグラウンド更新を共有）
+        self.trend_scraper = get_global_trend_scraper()
     
     async def initialize(self):
-        """twscrape APIを初期化"""
-        try:
-            self.api = API()
-            await self.api.pool.login_all()
-        except Exception as e:
-            print(f"twscrape初期化エラー: {str(e)}")
-            # エラーが発生しても続行（モックデータを使用）
+        """初期化（互換性のため残す）"""
+        pass
     
-    async def get_trends(self, limit: int = 10) -> List[Dict[str, str]]:
+    async def get_trends(self, limit: int = 50, use_cache: bool = True) -> List[Dict[str, str]]:
         """
-        Xのトレンドを取得
+        Xのトレンドを取得（twittrend.jpから取得、日本語のトレンドを優先）
         
         Args:
-            limit: 取得するトレンドの数
+            limit: 取得するトレンドの数（最大50）
+            use_cache: キャッシュを使用するか（デフォルト: True）
         
         Returns:
-            トレンドのリスト
+            トレンドのリスト [{"keyword": "トレンド名", "tweet_count": 数値またはNone}]
         """
         try:
-            if self.api:
-                # 実際のAPI呼び出し（実装はtwscrapeの仕様に依存）
-                # ここではモックデータを返す
-                pass
+            # TrendScraperを使用してtwittrend.jpからトレンドを取得
+            trends = await self.trend_scraper.get_trends(limit=limit, use_cache=use_cache)
+            return trends
         except Exception as e:
             print(f"トレンド取得エラー: {str(e)}")
-        
-        # モックデータ（実際の実装ではtwscrapeから取得）
-        mock_trends = [
-            {"keyword": "AI", "tweet_count": 50000},
-            {"keyword": "プログラミング", "tweet_count": 30000},
-            {"keyword": "起業", "tweet_count": 25000},
-            {"keyword": "投資", "tweet_count": 40000},
-            {"keyword": "健康", "tweet_count": 35000},
+            # エラー時はフォールバックデータを返す
+            return self._get_fallback_trends(limit)
+    
+    def _get_fallback_trends(self, limit: int) -> List[Dict[str, str]]:
+        """フォールバック用の日本語トレンドデータ（20件）"""
+        fallback_trends = [
+            {"keyword": "AI", "tweet_count": None},
+            {"keyword": "プログラミング", "tweet_count": None},
+            {"keyword": "起業", "tweet_count": None},
+            {"keyword": "投資", "tweet_count": None},
+            {"keyword": "健康", "tweet_count": None},
+            {"keyword": "テクノロジー", "tweet_count": None},
+            {"keyword": "ビジネス", "tweet_count": None},
+            {"keyword": "教育", "tweet_count": None},
+            {"keyword": "ライフスタイル", "tweet_count": None},
+            {"keyword": "エンターテイメント", "tweet_count": None},
+            {"keyword": "副業", "tweet_count": None},
+            {"keyword": "在宅ワーク", "tweet_count": None},
+            {"keyword": "ママ", "tweet_count": None},
+            {"keyword": "パパ", "tweet_count": None},
+            {"keyword": "節約", "tweet_count": None},
+            {"keyword": "ダイエット", "tweet_count": None},
+            {"keyword": "旅行", "tweet_count": None},
+            {"keyword": "グルメ", "tweet_count": None},
+            {"keyword": "スポーツ", "tweet_count": None},
+            {"keyword": "映画", "tweet_count": None},
         ]
-        return mock_trends[:limit]
+        return fallback_trends[:limit]
     
     async def generate_article_from_trend(
         self,

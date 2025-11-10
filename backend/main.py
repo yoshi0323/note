@@ -26,6 +26,11 @@ init_db()
 app = FastAPI(title="Note下書き投稿システム")
 auto_post_service = AutoPostService()
 
+# グローバルなTrendScraperインスタンス（バックグラウンド更新用）
+from services.trend_scraper import TrendScraper
+from agents.trend_agent import get_global_trend_scraper
+global_trend_scraper = get_global_trend_scraper()
+
 # セッション管理（セッションID: 有効フラグ）
 active_sessions = {}
 
@@ -429,20 +434,22 @@ def get_article(
 
 @app.get("/api/trends")
 async def get_trends(
-    limit: int = 10,
+    limit: int = 50,
+    use_cache: bool = True,
     x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
-    """Xトレンド取得（セッション別）"""
+    """Xトレンド取得（twittrend.jpから取得、セッション別）"""
     try:
         session_id = validate_session(x_session_id)
         data = get_user_data(session_id)
         settings = data["settings"]
+        
         agent = TrendAgent(
             openai_api_key=settings.get("openai_api_key"),
             gemini_api_key=settings.get("gemini_api_key")
         )
         await agent.initialize()
-        trends = await agent.get_trends(limit=limit)
+        trends = await agent.get_trends(limit=limit, use_cache=use_cache)
         return {"trends": trends}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -727,6 +734,124 @@ async def generate_x_post(
     except Exception as e:
         print(f"[エラー] X投稿生成: {str(e)}")
         raise HTTPException(status_code=500, detail=f"X投稿生成に失敗しました: {str(e)}")
+
+@app.on_event("startup")
+async def startup_event():
+    """サーバー起動時にバックグラウンドタスクを開始"""
+    # トレンド更新をバックグラウンドで開始（30分間隔）
+    global_trend_scraper.start_background_update(interval_minutes=30)
+    print("[サーバー起動] バックグラウンドトレンド更新を開始しました（30分間隔）")
+    
+    # スケジューラーを開始
+    auto_post_service.start()
+    print("[サーバー起動] 自動投稿スケジューラーを開始しました")
+    
+    # 既存のスケジュールを再登録（サーバー再起動時）
+    try:
+        # すべてのセッションのスケジュールを取得して再登録
+        conn = sqlite3.connect('user_data.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT session_id, data FROM user_data")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        schedule_count = 0
+        for row in rows:
+            session_id, data_json = row
+            import json
+            data = json.loads(data_json)
+            schedules = data.get("schedules", [])
+            
+            for schedule_info in schedules:
+                if schedule_info.get("status") == "active":
+                    # スケジュールを再登録
+                    try:
+                        settings = data.get("settings", {})
+                        note_id = settings.get("note_id", "").strip()
+                        note_password = settings.get("note_password", "").strip()
+                        
+                        if note_id and note_password:
+                            # コールバック関数を作成（クロージャを正しく作成）
+                            def create_callback(sid, sch, nid, npwd):
+                                async def generate_and_post_callback():
+                                    try:
+                                        from agents.trend_agent import TrendAgent
+                                        from agents.theme_agent import ThemeAgent
+                                        settings = get_user_data(sid)["settings"]
+                                        agent = TrendAgent(
+                                            openai_api_key=settings.get("openai_api_key"),
+                                            gemini_api_key=settings.get("gemini_api_key")
+                                        )
+                                        
+                                        if sch.get("trend_keyword") and sch.get("theme"):
+                                            result = await agent.generate_article_from_trend(
+                                                trend_keyword=sch["trend_keyword"],
+                                                theme=sch["theme"],
+                                                provider=sch.get("llm_provider", "openai")
+                                            )
+                                            
+                                            articles = get_user_articles(sid)
+                                            article = {
+                                                "id": len(articles) + 1,
+                                                "title": result["title"],
+                                                "content": result["content"],
+                                                "theme": sch["theme"],
+                                                "trend_keyword": sch["trend_keyword"]
+                                            }
+                                            add_user_article(sid, article)
+                                            
+                                            note_service = NoteService(note_id=nid, note_password=npwd)
+                                            await note_service.post_draft(article["title"], article["content"])
+                                            update_user_article(sid, article["id"], {"posted": True, "posted_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                                    except Exception as e:
+                                        print(f"[スケジュール実行エラー] {str(e)}")
+                                        import traceback
+                                        print(traceback.format_exc())
+                                return generate_and_post_callback
+                            
+                            # 既存記事の投稿コールバックも作成
+                            def create_post_callback(sid, sch, nid, npwd):
+                                async def post_callback():
+                                    try:
+                                        article = get_user_article(sid, sch.get("article_id", 0))
+                                        if article:
+                                            note_service = NoteService(note_id=nid, note_password=npwd)
+                                            await note_service.post_draft(article["title"], article["content"])
+                                            update_user_article(sid, sch.get("article_id", 0), {"posted": True, "posted_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                                    except Exception as e:
+                                        print(f"[スケジュール実行エラー] {str(e)}")
+                                        import traceback
+                                        print(traceback.format_exc())
+                                return post_callback
+                            
+                            # コールバック関数を決定
+                            if schedule_info.get("article_id"):
+                                callback = create_post_callback(session_id, schedule_info, note_id, note_password)
+                            else:
+                                callback = create_callback(session_id, schedule_info, note_id, note_password)
+                            
+                            auto_post_service.add_schedule(
+                                schedule_id=schedule_info["schedule_id"],
+                                article_id=schedule_info.get("article_id", 0),
+                                schedule_type=schedule_info["schedule_type"],
+                                day_of_week=schedule_info.get("day_of_week"),
+                                time_str=schedule_info["time"],
+                                post_callback=callback
+                            )
+                            schedule_count += 1
+                    except Exception as e:
+                        print(f"[スケジュール再登録エラー] {str(e)}")
+        
+        if schedule_count > 0:
+            print(f"[サーバー起動] {schedule_count}件のスケジュールを再登録しました")
+    except Exception as e:
+        print(f"[サーバー起動] スケジュール再登録エラー: {str(e)}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """サーバー停止時にバックグラウンドタスクを停止"""
+    global_trend_scraper.stop_background_update()
+    print("[サーバー停止] バックグラウンドトレンド更新を停止しました")
 
 if __name__ == "__main__":
     import uvicorn

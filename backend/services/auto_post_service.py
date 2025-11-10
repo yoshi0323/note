@@ -11,6 +11,7 @@ import asyncio
 class AutoPostService:
     def __init__(self):
         self.scheduled_posts = []  # スケジュール済み投稿のリスト
+        self.callbacks = {}  # スケジュールID -> コールバック関数のマッピング
         self.is_running = False
         self.scheduler_thread = None
     
@@ -92,10 +93,15 @@ class AutoPostService:
             # スケジュールリストに追加
             self.scheduled_posts.append(schedule_info)
             
+            # コールバック関数を保存
+            if post_callback:
+                self.callbacks[schedule_id] = post_callback
+            
             # スケジューラーが起動していない場合は起動
             if not self.is_running:
                 self.start()
             
+            print(f"[スケジュール追加] スケジュールID {schedule_id} を追加しました（{schedule_type}, {time_str}）")
             return schedule_info
         except Exception as e:
             raise Exception(f"スケジュール設定エラー: {str(e)}")
@@ -103,22 +109,69 @@ class AutoPostService:
     def remove_schedule(self, schedule_id: str):
         """スケジュールを削除"""
         # スケジュールリストから削除
+        removed_schedule = next((s for s in self.scheduled_posts if s.get("schedule_id") == schedule_id), None)
         self.scheduled_posts = [s for s in self.scheduled_posts if s.get("schedule_id") != schedule_id]
+        
+        # コールバック関数を削除
+        if schedule_id in self.callbacks:
+            del self.callbacks[schedule_id]
         
         # scheduleライブラリから削除（全クリアして再登録）
         schedule.clear()
-        # 残りのスケジュールを再登録する必要があるが、簡易実装のためここではクリアのみ
-        # 本番環境では、post_callbackを保持して再登録する必要がある
+        
+        # 残りのスケジュールを再登録（コールバック関数を保持）
+        for schedule_info in self.scheduled_posts:
+            if schedule_info.get("status") == "active":
+                post_callback = self.callbacks.get(schedule_info["schedule_id"])
+                if schedule_info["schedule_type"] == "daily":
+                    schedule.every().day.at(schedule_info["time"]).do(
+                        self._execute_post,
+                        schedule_id=schedule_info["schedule_id"],
+                        article_id=schedule_info.get("article_id", 0),
+                        post_callback=post_callback
+                    )
+                elif schedule_info["schedule_type"] == "weekly":
+                    day_of_week = schedule_info.get("day_of_week")
+                    if day_of_week is not None:
+                        days = {
+                            0: schedule.every().monday,
+                            1: schedule.every().tuesday,
+                            2: schedule.every().wednesday,
+                            3: schedule.every().thursday,
+                            4: schedule.every().friday,
+                            5: schedule.every().saturday,
+                            6: schedule.every().sunday
+                        }
+                        if day_of_week in days:
+                            days[day_of_week].at(schedule_info["time"]).do(
+                                self._execute_post,
+                                schedule_id=schedule_info["schedule_id"],
+                                article_id=schedule_info.get("article_id", 0),
+                                post_callback=post_callback
+                            )
+        
+        print(f"[スケジュール削除] スケジュールID {schedule_id} を削除しました（残り: {len(self.scheduled_posts)}件）")
     
     def _execute_post(self, schedule_id: str, article_id: int, post_callback: Optional[Callable] = None):
         """投稿を実行"""
         try:
+            print(f"[スケジュール実行] スケジュールID {schedule_id} を実行します")
             if post_callback:
                 # コールバックがasync関数かどうかを確認
                 if asyncio.iscoroutinefunction(post_callback):
-                    asyncio.run(post_callback())
+                    # 新しいイベントループを作成して実行
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    try:
+                        loop.run_until_complete(post_callback())
+                        print(f"[スケジュール実行] スケジュールID {schedule_id} の実行が完了しました")
+                    finally:
+                        loop.close()
                 else:
                     post_callback()
+                    print(f"[スケジュール実行] スケジュールID {schedule_id} の実行が完了しました")
+            else:
+                print(f"[スケジュール実行警告] スケジュールID {schedule_id} にコールバックが設定されていません")
             
             # スケジュール済み投稿のステータスを更新
             for post in self.scheduled_posts:
@@ -126,7 +179,7 @@ class AutoPostService:
                     post["last_executed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     break
         except Exception as e:
-            print(f"自動投稿エラー (schedule_id: {schedule_id}): {str(e)}")
+            print(f"[自動投稿エラー] スケジュールID {schedule_id}: {str(e)}")
             import traceback
             print(traceback.format_exc())
     
