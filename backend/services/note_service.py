@@ -30,7 +30,12 @@ class NoteService:
         """ブラウザを初期化（Windows環境対応）"""
         try:
             if self.browser is None:
-                print(f"[ブラウザ初期化] 開始 (headless={headless}, USE_SYNC={USE_SYNC})")
+                print(f"[ブラウザ初期化] 開始 (headless={headless}, type={type(headless)}, USE_SYNC={USE_SYNC})")
+                
+                # headlessが文字列の場合はbooleanに変換
+                if isinstance(headless, str):
+                    headless = headless.lower() in ('true', '1', 'yes', 'on')
+                    print(f"[ブラウザ初期化] headlessを文字列からbooleanに変換: {headless}")
                 
                 if USE_SYNC:
                     # Windows環境: sync_playwrightを使用して別スレッドで実行

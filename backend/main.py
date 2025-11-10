@@ -576,26 +576,37 @@ async def post_draft(
             
             for attempt in range(max_retries):
                 try:
+                    print(f"[下書き投稿] 試行 {attempt + 1}/{max_retries} 開始")
                     result = await note_service.post_draft(article["title"], article["content"])
                     # 投稿済みフラグを設定
                     update_user_article(session_id, article_id, {"posted": True, "posted_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                    print(f"[下書き投稿] 成功: 試行 {attempt + 1}/{max_retries}")
                     return {
                         "success": True, 
                         "message": "下書きを保存しました",
                         "result": result
                     }
                 except Exception as e:
+                    import traceback
+                    error_traceback = traceback.format_exc()
+                    print(f"[下書き投稿] 試行 {attempt + 1}/{max_retries} 失敗: {str(e)}")
+                    print(f"[下書き投稿] エラー詳細:\n{error_traceback}")
+                    
                     if attempt < max_retries - 1:
-                        print(f"[下書き投稿] リトライ {attempt + 1}/{max_retries}: {str(e)}")
+                        print(f"[下書き投稿] {retry_delay}秒後にリトライします...")
                         await asyncio.sleep(retry_delay)
-                        # ブラウザを再初期化
+                        # ブラウザを確実に閉じる
                         try:
                             await note_service.close()
-                        except:
-                            pass
+                            print("[下書き投稿] ブラウザを閉じました")
+                        except Exception as close_error:
+                            print(f"[下書き投稿] ブラウザクローズエラー（無視）: {str(close_error)}")
+                        # 新しいNoteServiceインスタンスを作成
                         note_service = NoteService(note_id=note_id, note_password=note_password)
+                        print("[下書き投稿] 新しいNoteServiceインスタンスを作成しました")
                     else:
                         # 最後の試行でも失敗した場合はエラーを再発生
+                        print(f"[下書き投稿] 全試行が失敗しました")
                         raise
     except HTTPException:
         raise
