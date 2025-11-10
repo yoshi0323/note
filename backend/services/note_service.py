@@ -10,10 +10,22 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Windows環境ではsync_playwrightを使用
 if sys.platform == 'win32':
-    from playwright.sync_api import sync_playwright, Browser, Page, BrowserContext
+    from playwright.sync_api import (
+        sync_playwright,
+        Browser,
+        Page,
+        BrowserContext,
+        TimeoutError as PlaywrightTimeoutError,
+    )
     USE_SYNC = True
 else:
-    from playwright.async_api import async_playwright, Browser, Page, BrowserContext
+    from playwright.async_api import (
+        async_playwright,
+        Browser,
+        Page,
+        BrowserContext,
+        TimeoutError as PlaywrightTimeoutError,
+    )
     USE_SYNC = False
 
 class NoteService:
@@ -810,17 +822,75 @@ class NoteService:
                 ]
                 
                 for context in editor_contexts:
+                    context_label = getattr(context, 'url', None)
                     for selector in title_selectors:
                         try:
                             title_element = context.locator(selector).first
                             count = await title_element.count()
                             if count > 0:
-                                await title_element.click()
-                                await asyncio.sleep(0.5)
-                                await title_element.fill(title)
-                                print(f"[下書き投稿] タイトルを入力しました (コンテキスト: {getattr(context, 'url', 'page')}, セレクター: {selector})")
-                                title_filled = True
-                                break
+                                try:
+                                    await title_element.wait_for(state="visible", timeout=15000)
+                                except PlaywrightTimeoutError as e:
+                                    print(f"[下書き投稿] タイトルセレクター {selector} の可視化待機でタイムアウト: {str(e)}")
+                                
+                                try:
+                                    await title_element.scroll_into_view_if_needed()
+                                except Exception as e:
+                                    print(f"[下書き投稿] タイトルセレクター {selector} のスクロールでエラー: {str(e)}")
+                                
+                                clicked = False
+                                for attempt in range(2):
+                                    try:
+                                        await title_element.click(timeout=5000)
+                                        clicked = True
+                                        break
+                                    except PlaywrightTimeoutError as e:
+                                        print(f"[下書き投稿] タイトルセレクター {selector} のクリック{attempt+1}回目でタイムアウト: {str(e)}")
+                                        try:
+                                            await title_element.click(force=True, timeout=3000)
+                                            clicked = True
+                                            break
+                                        except PlaywrightTimeoutError as e2:
+                                            print(f"[下書き投稿] タイトルセレクター {selector} のforceクリック{attempt+1}回目でタイムアウト: {str(e2)}")
+                                if not clicked:
+                                    try:
+                                        await title_element.evaluate("element => element.focus()", timeout=3000)
+                                        clicked = True
+                                    except Exception as e:
+                                        print(f"[下書き投稿] タイトルセレクター {selector} のfocusでエラー: {str(e)}")
+                                
+                                filled_direct = True
+                                try:
+                                    await asyncio.sleep(0.3)
+                                    await title_element.fill(title, timeout=5000)
+                                except PlaywrightTimeoutError as e:
+                                    print(f"[下書き投稿] タイトルセレクター {selector} のfillでタイムアウト: {str(e)}")
+                                    filled_direct = False
+                                
+                                if not filled_direct:
+                                    try:
+                                        await title_element.evaluate(
+                                            """(element, value) => {
+                                                if ('value' in element) {
+                                                    element.value = value;
+                                                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                                                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                                                } else if (element.innerHTML !== undefined) {
+                                                    element.innerHTML = value;
+                                                }
+                                            }""",
+                                            title,
+                                        )
+                                        filled_direct = True
+                                    except Exception as e:
+                                        print(f"[下書き投稿] タイトルセレクター {selector} のevaluate入力でエラー: {str(e)}")
+                                
+                                if filled_direct:
+                                    print(f"[下書き投稿] タイトルを入力しました (コンテキスト: {context_label or 'page'}, セレクター: {selector})")
+                                    title_filled = True
+                                    break
+                                else:
+                                    print(f"[下書き投稿] タイトルセレクター {selector} での入力に失敗しました")
                         except Exception as e:
                             print(f"[下書き投稿] タイトルセレクター {selector} でエラー: {str(e)}")
                             continue
@@ -870,22 +940,72 @@ class NoteService:
                 ]
                 
                 for context in editor_contexts:
+                    context_label = getattr(context, 'url', None)
                     for selector in content_selectors:
                         try:
                             content_element = context.locator(selector).first
                             count = await content_element.count()
                             if count > 0:
-                                await content_element.click()
-                                await asyncio.sleep(0.5)
+                                try:
+                                    await content_element.wait_for(state="visible", timeout=15000)
+                                except PlaywrightTimeoutError as e:
+                                    print(f"[下書き投稿] 本文セレクター {selector} の可視化待機でタイムアウト: {str(e)}")
+                                
+                                try:
+                                    await content_element.scroll_into_view_if_needed()
+                                except Exception as e:
+                                    print(f"[下書き投稿] 本文セレクター {selector} のスクロールでエラー: {str(e)}")
+                                
+                                clicked = False
+                                for attempt in range(2):
+                                    try:
+                                        await content_element.click(timeout=5000)
+                                        clicked = True
+                                        break
+                                    except PlaywrightTimeoutError as e:
+                                        print(f"[下書き投稿] 本文セレクター {selector} のクリック{attempt+1}回目でタイムアウト: {str(e)}")
+                                        try:
+                                            await content_element.click(force=True, timeout=3000)
+                                            clicked = True
+                                            break
+                                        except PlaywrightTimeoutError as e2:
+                                            print(f"[下書き投稿] 本文セレクター {selector} のforceクリック{attempt+1}回目でタイムアウト: {str(e2)}")
+                                if not clicked:
+                                    try:
+                                        await content_element.evaluate("element => element.focus()", timeout=3000)
+                                        clicked = True
+                                    except Exception as e:
+                                        print(f"[下書き投稿] 本文セレクター {selector} のfocusでエラー: {str(e)}")
                                 
                                 is_contenteditable = await content_element.get_attribute('contenteditable')
                                 role_attr = await content_element.get_attribute('role')
                                 if is_contenteditable or (role_attr and role_attr.lower() == 'textbox'):
                                     await content_element.evaluate(f'element => element.innerHTML = `{content.replace(chr(10), "<br>")}`')
                                 else:
-                                    await content_element.fill(content)
+                                    filled_textarea = True
+                                    try:
+                                        await content_element.fill(content, timeout=5000)
+                                    except PlaywrightTimeoutError as e:
+                                        print(f"[下書き投稿] 本文セレクター {selector} のfillでタイムアウト: {str(e)}")
+                                        filled_textarea = False
+                                    if not filled_textarea:
+                                        try:
+                                            await content_element.evaluate(
+                                                """(element, value) => {
+                                                    if ('value' in element) {
+                                                        element.value = value;
+                                                        element.dispatchEvent(new Event('input', { bubbles: true }));
+                                                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                                                    } else {
+                                                        element.innerHTML = value;
+                                                    }
+                                                }""",
+                                                content,
+                                            )
+                                        except Exception as e:
+                                            print(f"[下書き投稿] 本文セレクター {selector} のevaluate入力でエラー: {str(e)}")
                                 
-                                print(f"[下書き投稿] 本文を入力しました (コンテキスト: {getattr(context, 'url', 'page')}, セレクター: {selector})")
+                                print(f"[下書き投稿] 本文を入力しました (コンテキスト: {context_label or 'page'}, セレクター: {selector})")
                                 content_filled = True
                                 break
                         except Exception as e:
