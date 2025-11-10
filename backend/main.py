@@ -500,15 +500,33 @@ async def post_draft(
             )
             return {"success": True, "message": f"投稿をスケジュールしました: {scheduled_time}"}
         else:
-            # 即座に投稿（ブラウザスクレイピングで自動実行）
-            result = await note_service.post_draft(article["title"], article["content"])
-            # 投稿済みフラグを設定
-            update_user_article(session_id, article_id, {"posted": True, "posted_at": time.strftime("%Y-%m-%d %H:%M:%S")})
-            return {
-                "success": True, 
-                "message": "下書きを保存しました",
-                "result": result
-            }
+            # 即座に投稿（ブラウザスクレイピングで自動実行、リトライ機能付き）
+            max_retries = 3
+            retry_delay = 2  # 秒
+            
+            for attempt in range(max_retries):
+                try:
+                    result = await note_service.post_draft(article["title"], article["content"])
+                    # 投稿済みフラグを設定
+                    update_user_article(session_id, article_id, {"posted": True, "posted_at": time.strftime("%Y-%m-%d %H:%M:%S")})
+                    return {
+                        "success": True, 
+                        "message": "下書きを保存しました",
+                        "result": result
+                    }
+                except Exception as e:
+                    if attempt < max_retries - 1:
+                        print(f"[下書き投稿] リトライ {attempt + 1}/{max_retries}: {str(e)}")
+                        await asyncio.sleep(retry_delay)
+                        # ブラウザを再初期化
+                        try:
+                            await note_service.close()
+                        except:
+                            pass
+                        note_service = NoteService(note_id=note_id, note_password=note_password)
+                    else:
+                        # 最後の試行でも失敗した場合はエラーを再発生
+                        raise
     except HTTPException:
         raise
     except Exception as e:

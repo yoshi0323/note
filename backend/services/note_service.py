@@ -113,6 +113,10 @@ class NoteService:
         except Exception as e:
             print(f"[ブラウザクローズエラー] {str(e)}")
     
+    async def close(self):
+        """ブラウザを閉じる（公開メソッド）"""
+        await self._close_browser()
+    
     async def login(self) -> bool:
         """
         noteにログイン（ブラウザスクレイピング）
@@ -123,8 +127,8 @@ class NoteService:
         try:
             # 本番環境（Renderなど）ではヘッドレスモードを使用
             import os
-            is_production = os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME")
-            headless_mode = is_production if is_production else False
+            is_production = bool(os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME"))
+            headless_mode = True if is_production else False
             await self._init_browser(headless=headless_mode)
             
             if USE_SYNC:
