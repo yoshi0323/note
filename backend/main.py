@@ -2,11 +2,13 @@ from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
+from pathlib import Path
 import os
 import uuid
 import sqlite3
 import sys
 import asyncio
+import asyncio.subprocess
 import time
 from dotenv import load_dotenv
 from agents import ThemeAgent, TrendAgent, XPostAgent
@@ -25,6 +27,74 @@ init_db()
 
 app = FastAPI(title="Note下書き投稿システム")
 auto_post_service = AutoPostService()
+
+# Playwrightブラウザのインストールを1回だけ確認するためのロック
+_playwright_install_lock = asyncio.Lock()
+_playwright_install_checked = False
+
+
+def _is_chromium_installed() -> bool:
+    """PlaywrightのChromiumがインストール済みか判定"""
+    browsers_base = os.getenv("PLAYWRIGHT_BROWSERS_PATH")
+    if browsers_base:
+        base_path = Path(browsers_base)
+    elif sys.platform == "win32":
+        base_path = Path.home() / "AppData" / "Local" / "ms-playwright"
+    else:
+        base_path = Path.home() / ".cache" / "ms-playwright"
+
+    if not base_path.exists():
+        return False
+
+    for chromium_dir in base_path.glob("chromium-*"):
+        chrome_path = chromium_dir / "chrome-linux" / "chrome"
+        if chrome_path.exists():
+            return True
+    return False
+
+
+async def ensure_playwright_browsers():
+    """Playwrightのブラウザが利用可能か確認し、必要ならインストール"""
+    global _playwright_install_checked
+
+    async with _playwright_install_lock:
+        if _playwright_install_checked:
+            return
+
+        if _is_chromium_installed():
+            print("[Playwright] Chromiumは既にインストールされています")
+            _playwright_install_checked = True
+            return
+
+        install_cmd = [sys.executable, "-m", "playwright", "install", "chromium"]
+
+        # Renderなどの環境では依存関係のインストールも必要になる場合がある
+        if os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME"):
+            install_cmd.append("--with-deps")
+
+        print(f"[Playwright] Chromiumをインストールします: {' '.join(install_cmd)}")
+        try:
+            process = await asyncio.create_subprocess_exec(
+                *install_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await process.communicate()
+
+            if stdout:
+                print("[Playwright][stdout]", stdout.decode(errors="ignore"))
+            if stderr:
+                print("[Playwright][stderr]", stderr.decode(errors="ignore"))
+
+            if process.returncode == 0:
+                print("[Playwright] Chromiumのインストールに成功しました")
+            else:
+                print(f"[Playwright] Chromiumのインストールに失敗しました (returncode={process.returncode})")
+        except Exception as e:
+            print(f"[Playwright] Chromiumインストール中にエラーが発生しました: {str(e)}")
+        finally:
+            _playwright_install_checked = True
+
 
 # グローバルなTrendScraperインスタンス（バックグラウンド更新用）
 from services.trend_scraper import TrendScraper
@@ -763,6 +833,8 @@ async def generate_x_post(
 @app.on_event("startup")
 async def startup_event():
     """サーバー起動時にバックグラウンドタスクを開始"""
+    await ensure_playwright_browsers()
+    print("[サーバー起動] Playwrightブラウザの準備が完了しました")
     # トレンド更新をバックグラウンドで開始（30分間隔）
     global_trend_scraper.start_background_update(interval_minutes=30)
     print("[サーバー起動] バックグラウンドトレンド更新を開始しました（30分間隔）")
