@@ -53,8 +53,9 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # セッション管理関数
@@ -511,7 +512,13 @@ async def post_draft(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"下書き投稿エラー: {str(e)}")
+        import traceback
+        error_detail = str(e)
+        error_traceback = traceback.format_exc()
+        print(f"[下書き投稿エラー] {error_detail}")
+        print(f"[下書き投稿エラー詳細] {error_traceback}")
+        # エラーメッセージを簡潔にして、詳細はログに記録
+        raise HTTPException(status_code=500, detail=f"下書き投稿エラー: {error_detail}")
 
 @app.delete("/api/articles/{article_id}")
 def delete_article(

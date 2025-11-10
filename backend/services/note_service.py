@@ -121,7 +121,11 @@ class NoteService:
             ログイン成功かどうか
         """
         try:
-            await self._init_browser(headless=False)  # デバッグのためheadless=False
+            # 本番環境（Renderなど）ではヘッドレスモードを使用
+            import os
+            is_production = os.getenv("RENDER") or os.getenv("RAILWAY") or os.getenv("FLY_APP_NAME")
+            headless_mode = is_production if is_production else False
+            await self._init_browser(headless=headless_mode)
             
             if USE_SYNC:
                 # Windows環境: 同期的に実行
