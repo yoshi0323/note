@@ -15,10 +15,16 @@ function Login({ onLogin }) {
     try {
       const result = await login(password);
       if (result.success) {
-        onLogin();
+        onLogin(result.session_id);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || 'ログインに失敗しました');
+      console.error('ログインエラー詳細:', err);
+      // ネットワークエラーの場合の詳細なメッセージ
+      if (err.code === 'ERR_NETWORK' || err.message?.includes('ERR_BLOCKED_BY_CLIENT')) {
+        setError('バックエンドサーバーに接続できません。サーバーが起動しているか、ブラウザの拡張機能（広告ブロッカーなど）がリクエストをブロックしていないか確認してください。');
+      } else {
+        setError(err.response?.data?.detail || 'ログインに失敗しました');
+      }
     } finally {
       setLoading(false);
     }

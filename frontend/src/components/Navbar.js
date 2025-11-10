@@ -30,7 +30,11 @@ function Navbar({ onLogout }) {
         <Link to="/settings" className={location.pathname === '/settings' ? 'active' : ''}>
           設定
         </Link>
-        <button onClick={onLogout} className="btn-logout">
+        <button onClick={onLogout || (() => {
+          localStorage.removeItem('isAuthenticated');
+          localStorage.removeItem('session_id');
+          window.location.href = '/login';
+        })} className="btn-logout">
           ログアウト
         </button>
       </nav>

@@ -21,15 +21,22 @@ function App() {
     }
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = (sessionId) => {
     setIsAuthenticated(true);
     localStorage.setItem('isAuthenticated', 'true');
+    if (sessionId) {
+      localStorage.setItem('session_id', sessionId);
+    }
+    // ダッシュボードにリダイレクト
+    window.location.href = '/dashboard';
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
     localStorage.removeItem('isAuthenticated');
     localStorage.removeItem('session_id');  // セッションIDも削除
+    // ログインページにリダイレクト
+    window.location.href = '/login';
   };
 
   return (
@@ -53,19 +60,19 @@ function App() {
             />
             <Route 
               path="/settings" 
-              element={<Settings />} 
+              element={<Settings onLogout={handleLogout} />} 
             />
             <Route 
               path="/theme-generator" 
-              element={<ThemeGenerator />} 
+              element={<ThemeGenerator onLogout={handleLogout} />} 
             />
             <Route 
               path="/trend-generator" 
-              element={<TrendGenerator />} 
+              element={<TrendGenerator onLogout={handleLogout} />} 
             />
             <Route 
               path="/manual-editor" 
-              element={<ManualEditor />} 
+              element={<ManualEditor onLogout={handleLogout} />} 
             />
             <Route 
               path="/custom-generator" 
@@ -73,7 +80,7 @@ function App() {
             />
             <Route 
               path="/prompt-settings" 
-              element={<PromptSettings />} 
+              element={<PromptSettings onLogout={handleLogout} />} 
             />
             <Route path="/" element={<Navigate to="/dashboard" />} />
           </>
