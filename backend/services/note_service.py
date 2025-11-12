@@ -68,6 +68,8 @@ class NoteService:
                             timezone_id='Asia/Tokyo'
                         )
                         page = context.new_page()
+                        page.set_default_timeout(60000)
+                        page.set_default_navigation_timeout(60000)
                         return p, browser, context, page
                     
                     loop = asyncio.get_event_loop()
@@ -92,6 +94,8 @@ class NoteService:
                         timezone_id='Asia/Tokyo'
                     )
                     self.page = await self.context.new_page()
+                    self.page.set_default_timeout(60000)
+                    self.page.set_default_navigation_timeout(60000)
                     print("[ブラウザ初期化] async_playwrightで成功")
         except Exception as e:
             import traceback
@@ -130,6 +134,62 @@ class NoteService:
         except Exception as e:
             print(f"[ブラウザクローズエラー] {str(e)}")
     
+    async def _goto(self, url: str, *, wait_until: str = 'domcontentloaded', timeout: int = 60000, label: str = '', retries: int = 2):
+        """ナビゲーションを安定化させるための内部ヘルパー"""
+        if self.page is None:
+            raise RuntimeError("ページが初期化されていません")
+        
+        label = label or url
+        
+        if USE_SYNC:
+            def navigate_sync():
+                page = self.page
+                if page is None:
+                    raise RuntimeError("ページが初期化されていません")
+                
+                last_exc = None
+                for attempt in range(1, retries + 1):
+                    try:
+                        page.goto(url, wait_until=wait_until, timeout=timeout)
+                        return True
+                    except PlaywrightTimeoutError as exc:
+                        last_exc = exc
+                        current_url = page.url if page else 'about:blank'
+                        print(f"[ブラウザナビゲーション] {label} への移動でタイムアウト ({attempt}/{retries}) current_url={current_url}")
+                        if current_url and current_url not in ('about:blank', '', url):
+                            return True
+                        if attempt < retries:
+                            time.sleep(3)
+                if last_exc:
+                    raise last_exc
+                return False
+            
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(self.executor, navigate_sync)
+        else:
+            last_exc = None
+            for attempt in range(1, retries + 1):
+                try:
+                    await self.page.goto(url, wait_until=wait_until, timeout=timeout)
+                    return True
+                except PlaywrightTimeoutError as exc:
+                    last_exc = exc
+                    current_url = self.page.url if self.page else 'about:blank'
+                    print(f"[ブラウザナビゲーション] {label} への移動でタイムアウト ({attempt}/{retries}) current_url={current_url}")
+                    
+                    if current_url and current_url not in ('about:blank', '', url):
+                        try:
+                            await self.page.wait_for_load_state('domcontentloaded', timeout=15000)
+                        except PlaywrightTimeoutError:
+                            pass
+                        return True
+                    
+                    if attempt < retries:
+                        await asyncio.sleep(3)
+            if last_exc:
+                raise last_exc
+            return False
+    
     async def close(self):
         """ブラウザを閉じる（公開メソッド）"""
         await self._close_browser()
@@ -161,11 +221,22 @@ class NoteService:
                 # Windows環境: 同期的に実行
                 def login_sync():
                     page = self.page
-                    page.goto('https://note.com/login', wait_until='domcontentloaded', timeout=30000)
+                    try:
+                        page.goto('https://note.com/login', wait_until='domcontentloaded', timeout=60000)
+                    except PlaywrightTimeoutError as exc:
+                        current_url = page.url if page else 'about:blank'
+                        print(f"[ログイン] ログインページへの遷移でタイムアウトしました ({str(exc)}), current_url={current_url}")
+                        if current_url in ('about:blank', '', 'https://note.com/login'):
+                            raise
                     time.sleep(3)
                     
-                    page.screenshot(path='login_page.png')
-                    print("[ログイン] ログインページのスクリーンショットを保存しました: login_page.png")
+                    try:
+                        page.screenshot(path='login_page.png', full_page=True, timeout=10000)
+                        print("[ログイン] ログインページのスクリーンショットを保存しました: login_page.png")
+                    except PlaywrightTimeoutError as exc:
+                        print(f"[ログイン] ログインページのスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(exc)}")
+                    except Exception as exc:
+                        print(f"[ログイン] ログインページのスクリーンショット取得に失敗しましたが処理を続行します: {str(exc)}")
                     
                     # メールアドレス入力
                     email_filled = False
@@ -250,8 +321,13 @@ class NoteService:
                     
                     time.sleep(5)
                     
-                    page.screenshot(path='after_login.png')
-                    print("[ログイン] ログイン後のスクリーンショットを保存しました: after_login.png")
+                    try:
+                        page.screenshot(path='after_login.png', full_page=True, timeout=10000)
+                        print("[ログイン] ログイン後のスクリーンショットを保存しました: after_login.png")
+                    except PlaywrightTimeoutError as exc:
+                        print(f"[ログイン] ログイン後のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(exc)}")
+                    except Exception as exc:
+                        print(f"[ログイン] ログイン後のスクリーンショット取得に失敗しましたが処理を続行します: {str(exc)}")
                     
                     current_url = page.url
                     print(f"[ログイン] 現在のURL: {current_url}")
@@ -300,11 +376,16 @@ class NoteService:
             else:
                 # 非Windows環境: 非同期で実行
                 print(f"[ログイン開始] note.comにアクセスします...")
-                await self.page.goto('https://note.com/login', wait_until='domcontentloaded', timeout=30000)
+                await self._goto('https://note.com/login', wait_until='domcontentloaded', timeout=60000, label="ログインページ遷移")
                 await asyncio.sleep(3)
                 
-                await self.page.screenshot(path='login_page.png')
-                print("[ログイン] ログインページのスクリーンショットを保存しました: login_page.png")
+                try:
+                    await self.page.screenshot(path='login_page.png', full_page=True, timeout=10000)
+                    print("[ログイン] ログインページのスクリーンショットを保存しました: login_page.png")
+                except PlaywrightTimeoutError as e:
+                    print(f"[ログイン] ログインページのスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(e)}")
+                except Exception as e:
+                    print(f"[ログイン] ログインページのスクリーンショット取得に失敗しましたが処理を続行します: {str(e)}")
                 
                 email_filled = False
                 email_selectors = [
@@ -386,8 +467,13 @@ class NoteService:
                 
                 await asyncio.sleep(5)
                 
-                await self.page.screenshot(path='after_login.png')
-                print("[ログイン] ログイン後のスクリーンショットを保存しました: after_login.png")
+                try:
+                    await self.page.screenshot(path='after_login.png', full_page=True, timeout=10000)
+                    print("[ログイン] ログイン後のスクリーンショットを保存しました: after_login.png")
+                except PlaywrightTimeoutError as e:
+                    print(f"[ログイン] ログイン後のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(e)}")
+                except Exception as e:
+                    print(f"[ログイン] ログイン後のスクリーンショット取得に失敗しましたが処理を続行します: {str(e)}")
                 
                 current_url = self.page.url
                 print(f"[ログイン] 現在のURL: {current_url}")
@@ -436,11 +522,18 @@ class NoteService:
             print(f"[ログインエラー] {error_msg}")
             try:
                 if self.page:
-                    if USE_SYNC:
-                        self.page.screenshot(path=f'login_error_{int(time.time())}.png')
-                    else:
-                        await self.page.screenshot(path=f'login_error_{int(time.time())}.png')
-            except:
+                    screenshot_path = f'login_error_{int(time.time())}.png'
+                    try:
+                        if USE_SYNC:
+                            self.page.screenshot(path=screenshot_path, full_page=True, timeout=10000)
+                        else:
+                            await self.page.screenshot(path=screenshot_path, full_page=True, timeout=10000)
+                        print(f"[ログインエラー] スクリーンショットを保存: {screenshot_path}")
+                    except PlaywrightTimeoutError as capture_timeout:
+                        print(f"[ログインエラー] スクリーンショット取得がタイムアウトしましたが処理を続行します: {str(capture_timeout)}")
+                    except Exception as capture_error:
+                        print(f"[ログインエラー] スクリーンショット保存に失敗しましたが処理を続行します: {str(capture_error)}")
+            except Exception:
                 pass
             await self._close_browser()
             raise Exception(f"ログインに失敗しました: {error_msg}")
@@ -485,7 +578,13 @@ class NoteService:
                     page = self.page
                     print(f"[下書き投稿] note.comのトップページに移動します...")
                     # まずトップページまたはマイページに移動
-                    page.goto('https://note.com/', wait_until='domcontentloaded', timeout=30000)
+                    try:
+                        page.goto('https://note.com/', wait_until='domcontentloaded', timeout=60000)
+                    except PlaywrightTimeoutError as exc:
+                        current_url = page.url if page else 'about:blank'
+                        print(f"[下書き投稿] トップページへの遷移でタイムアウトしました ({str(exc)}) current_url={current_url}")
+                        if current_url in ('about:blank', '', 'https://note.com/'):
+                            raise
                     time.sleep(3)
                     
                     # 「投稿」ボタンを探してクリック
@@ -526,7 +625,13 @@ class NoteService:
                     if not post_button_clicked:
                         # 投稿ボタンが見つからない場合、直接URLにアクセスを試す
                         print("[下書き投稿] 「投稿」ボタンが見つからないため、直接URLにアクセスします...")
-                        page.goto('https://note.com/mypage/notes/new', wait_until='domcontentloaded', timeout=30000)
+                        try:
+                            page.goto('https://note.com/mypage/notes/new', wait_until='domcontentloaded', timeout=60000)
+                        except PlaywrightTimeoutError as exc:
+                            current_url = page.url if page else 'about:blank'
+                            print(f"[下書き投稿] エディタページへの直接遷移でタイムアウトしました ({str(exc)}) current_url={current_url}")
+                            if current_url in ('about:blank', '', 'https://note.com/mypage/notes/new'):
+                                raise
                         time.sleep(5)
                     
                     # エディタページのURLを確認
@@ -550,8 +655,13 @@ class NoteService:
                     
                     time.sleep(3)  # エディタ読み込み待機
                     
-                    page.screenshot(path='editor_page.png')
-                    print("[下書き投稿] エディタページのスクリーンショットを保存しました: editor_page.png")
+                    try:
+                        page.screenshot(path='editor_page.png', full_page=True, timeout=10000)
+                        print("[下書き投稿] エディタページのスクリーンショットを保存しました: editor_page.png")
+                    except PlaywrightTimeoutError as exc:
+                        print(f"[下書き投稿] エディタページのスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(exc)}")
+                    except Exception as exc:
+                        print(f"[下書き投稿] エディタページのスクリーンショット取得に失敗しましたが処理を続行します: {str(exc)}")
                     
                     # タイトル入力
                     print("[下書き投稿] タイトルを入力します...")
@@ -654,8 +764,13 @@ class NoteService:
                     
                     time.sleep(3)
                     
-                    page.screenshot(path='before_save.png')
-                    print("[下書き投稿] 保存前のスクリーンショットを保存しました: before_save.png")
+                    try:
+                        page.screenshot(path='before_save.png', full_page=True, timeout=10000)
+                        print("[下書き投稿] 保存前のスクリーンショットを保存しました: before_save.png")
+                    except PlaywrightTimeoutError as exc:
+                        print(f"[下書き投稿] 保存前のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(exc)}")
+                    except Exception as exc:
+                        print(f"[下書き投稿] 保存前のスクリーンショット取得に失敗しましたが処理を続行します: {str(exc)}")
                     
                     # 保存ボタンをクリック
                     print("[下書き投稿] 下書き保存ボタンを探します...")
@@ -698,8 +813,13 @@ class NoteService:
                     current_url = page.url
                     print(f"[下書き投稿] 保存後のURL: {current_url}")
                     
-                    page.screenshot(path='after_save.png')
-                    print("[下書き投稿] 保存後のスクリーンショットを保存しました: after_save.png")
+                    try:
+                        page.screenshot(path='after_save.png', full_page=True, timeout=10000)
+                        print("[下書き投稿] 保存後のスクリーンショットを保存しました: after_save.png")
+                    except PlaywrightTimeoutError as exc:
+                        print(f"[下書き投稿] 保存後のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(exc)}")
+                    except Exception as exc:
+                        print(f"[下書き投稿] 保存後のスクリーンショット取得に失敗しましたが処理を続行します: {str(exc)}")
                     
                     success = 'draft' in current_url.lower() or 'mypage' in current_url.lower() or 'note' in current_url.lower()
                     
@@ -726,7 +846,7 @@ class NoteService:
                 # 非Windows環境: 非同期で実行
                 print(f"[下書き投稿] note.comのトップページに移動します...")
                 # まずトップページまたはマイページに移動
-                await self.page.goto('https://note.com/', wait_until='domcontentloaded', timeout=30000)
+                await self._goto('https://note.com/', wait_until='domcontentloaded', timeout=60000, label="トップページ遷移")
                 await asyncio.sleep(3)
                 
                 # 「投稿」ボタンを探してクリック
@@ -767,7 +887,7 @@ class NoteService:
                 if not post_button_clicked:
                     # 投稿ボタンが見つからない場合、直接URLにアクセスを試す
                     print("[下書き投稿] 「投稿」ボタンが見つからないため、直接URLにアクセスします...")
-                    await self.page.goto('https://note.com/mypage/notes/new', wait_until='domcontentloaded', timeout=30000)
+                    await self._goto('https://note.com/mypage/notes/new', wait_until='domcontentloaded', timeout=60000, label="エディタ直接遷移")
                     await asyncio.sleep(5)
                 
                 # エディタページのURLを確認
@@ -791,8 +911,13 @@ class NoteService:
                 
                 await asyncio.sleep(3)  # エディタ読み込み待機
                 
-                await self.page.screenshot(path='editor_page.png')
-                print("[下書き投稿] エディタページのスクリーンショットを保存しました: editor_page.png")
+                try:
+                    await self.page.screenshot(path='editor_page.png', full_page=True, timeout=10000)
+                    print("[下書き投稿] エディタページのスクリーンショットを保存しました: editor_page.png")
+                except PlaywrightTimeoutError as e:
+                    print(f"[下書き投稿] エディタページのスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(e)}")
+                except Exception as e:
+                    print(f"[下書き投稿] エディタページのスクリーンショット取得に失敗しましたが処理を続行します: {str(e)}")
                 
                 # エディタがiframe内に読み込まれている場合に対応
                 editor_contexts = [self.page]
@@ -1040,8 +1165,13 @@ class NoteService:
                 
                 await asyncio.sleep(3)
                 
-                await self.page.screenshot(path='before_save.png')
-                print("[下書き投稿] 保存前のスクリーンショットを保存しました: before_save.png")
+                try:
+                    await self.page.screenshot(path='before_save.png', full_page=True, timeout=10000)
+                    print("[下書き投稿] 保存前のスクリーンショットを保存しました: before_save.png")
+                except PlaywrightTimeoutError as e:
+                    print(f"[下書き投稿] 保存前のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(e)}")
+                except Exception as e:
+                    print(f"[下書き投稿] 保存前のスクリーンショット取得に失敗しましたが処理を続行します: {str(e)}")
                 
                 print("[下書き投稿] 下書き保存ボタンを探します...")
                 save_selectors = [
@@ -1083,8 +1213,13 @@ class NoteService:
                 current_url = self.page.url
                 print(f"[下書き投稿] 保存後のURL: {current_url}")
                 
-                await self.page.screenshot(path='after_save.png')
-                print("[下書き投稿] 保存後のスクリーンショットを保存しました: after_save.png")
+                try:
+                    await self.page.screenshot(path='after_save.png', full_page=True, timeout=10000)
+                    print("[下書き投稿] 保存後のスクリーンショットを保存しました: after_save.png")
+                except PlaywrightTimeoutError as e:
+                    print(f"[下書き投稿] 保存後のスクリーンショット取得がタイムアウトしましたが処理を続行します: {str(e)}")
+                except Exception as e:
+                    print(f"[下書き投稿] 保存後のスクリーンショット取得に失敗しましたが処理を続行します: {str(e)}")
                 
                 success = 'draft' in current_url.lower() or 'mypage' in current_url.lower() or 'note' in current_url.lower()
                 
@@ -1114,13 +1249,18 @@ class NoteService:
             try:
                 if self.page:
                     screenshot_path = f'error_screenshot_{int(time.time())}.png'
-                    if USE_SYNC:
-                        self.page.screenshot(path=screenshot_path)
-                    else:
-                        await self.page.screenshot(path=screenshot_path)
-                    print(f"[下書き投稿エラー] スクリーンショットを保存: {screenshot_path}")
+                    try:
+                        if USE_SYNC:
+                            self.page.screenshot(path=screenshot_path, full_page=True, timeout=10000)
+                        else:
+                            await self.page.screenshot(path=screenshot_path, full_page=True, timeout=10000)
+                        print(f"[下書き投稿エラー] スクリーンショットを保存: {screenshot_path}")
+                    except PlaywrightTimeoutError as capture_timeout:
+                        print(f"[下書き投稿エラー] スクリーンショット取得がタイムアウトしましたが処理を続行します: {str(capture_timeout)}")
+                    except Exception as capture_error:
+                        print(f"[下書き投稿エラー] スクリーンショット保存に失敗しましたが処理を続行します: {str(capture_error)}")
             except Exception as screenshot_error:
-                print(f"[下書き投稿エラー] スクリーンショット保存失敗: {str(screenshot_error)}")
+                print(f"[下書き投稿エラー] スクリーンショット処理で予期せぬエラー: {str(screenshot_error)}")
             # ブラウザを閉じる
             try:
                 await self._close_browser()
